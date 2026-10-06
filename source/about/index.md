@@ -19,3 +19,6 @@ Linux 贡献者（？）
 如果你要和我讲话的话
 可以加入 https://cubewhy.dev/ot
 虽然不一定会通过申请
+
+My workspace:
+![workspace](/images/workspace-pic.jpg)
