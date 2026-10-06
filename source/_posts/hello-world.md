@@ -12,3 +12,7 @@ title: 这个站点是干什么的
 - [Off-topic 群组](/ot)
 - [GitHub](https://github.com/cubewhy)
 - [Email](mailto:qby140326@gmail.com)
+
+## 服务
+
+- [Skid Homework](https://skid.cubewhy.dev)
