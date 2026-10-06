@@ -15,10 +15,10 @@ base_info:
   avatar: https://avatars.githubusercontent.com/u/61075476?v=4
 
   # Website LOGO, You can use local image path or image link
-  logo: /images/logo.svg
+  logo:
 
   # Website favicon, You can use local image path or image link
-  favicon: /images/logo.svg
+  favicon:
 
 # ---------------------------------------------------------------------------------------
 # Docs: https://keep-docs.xpoet.cn/basis/configuration-guide/menu.html
