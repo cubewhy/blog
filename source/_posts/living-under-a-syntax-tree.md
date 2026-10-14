@@ -1,7 +1,7 @@
 ---
 title: Living in a Syntax Tree
 date: 2026-10-14 17:32:40
-tags:
+tags: thinking, compilers
 ---
 
 Imagine I'm a token or a node in a syntax tree.
