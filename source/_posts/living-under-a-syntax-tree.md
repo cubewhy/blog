@@ -13,13 +13,13 @@ Or I'm a trivia token, meaningless but plays an important role in the lex stage.
 
 Well, why not be a node? Then I'll have many children.
 I'll be produced from the event stream, or be build directly with a NodeBuilder.
-If I am a node, I want to figure out how I produced.
+If I am a node, I want to figure out how I was produced.
 Then I find the Sink, the Sink said you've created with the StartNode and FinishNode events.
 I noticed the forward_parent field in the StartNode event variant, how did the sink produce me with just a Tombstone (event)? Then I see the trick: walking the chain of forward pointers, the Sink steps through the tombstones to wrap me from the inside out.
-Do I have a parent? I might is a part of an expression;
+Do I have a parent? I might be a part of an expression;
 I cannot imagine the whole world of the CST.
 Can I be changed?
 Can I be deleted?
 No, I'm immutable.
-So what's my value? If I'm missing, the program may still be compile. But with my existence, just influenced the semantic of the code.
+So what's my value? If I'm missing, the program may still compile. But with my existence, just influenced the semantic of the code.
 So why I live? I think I live for the existence.
