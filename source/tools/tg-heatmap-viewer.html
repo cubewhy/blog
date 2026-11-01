@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Chat Activity Heatmap</title>
+  <style>
+    :root {
+      --bg-canvas: #0d1117;
+      --bg-card: #161b22;
+      --border-color: #30363d;
+      --text-primary: #c9d1d9;
+      --text-secondary: #8b949e;
+      --accent: #58a6ff;
+
+      /* 9-level palette: 0 (empty) + 8 activity tiers */
+      --level-0: #161b22;
+      --level-1: #0a2e1c;
+      --level-2: #0f4429;
+      --level-3: #155d36;
+      --level-4: #1b7744;
+      --level-5: #239253;
+      --level-6: #2bad63;
+      --level-7: #38ca75;
+      --level-8: #56f092;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 20px;
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    .container {
+      max-width: 1060px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .badge {
+      display: none;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      background-color: #21262d;
+      color: var(--accent);
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    select, .btn, .file-label {
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+
+    select:hover, .btn:hover, .file-label:hover {
+      border-color: var(--text-secondary);
+      background-color: #1f242c;
+    }
+
+    .btn-primary {
+      background-color: #238636;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    .btn-primary:hover {
+      background-color: #2ea043;
+      border-color: rgba(240, 246, 252, 0.2);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .heatmap-scroll {
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .heatmap-wrapper {
+      display: inline-flex;
+      flex-direction: column;
+      min-width: max-content;
+    }
+
+    .months-row {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 14px;
+      gap: 3px;
+      margin-left: 32px;
+      margin-bottom: 6px;
+      height: 16px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .month-label {
+      white-space: nowrap;
+    }
+
+    .grid-body {
+      display: flex;
+      gap: 6px;
+    }
+
+    .weekdays-col {
+      display: grid;
+      grid-template-rows: repeat(7, 14px);
+      gap: 3px;
+      width: 26px;
+      font-size: 10px;
+      color: var(--text-secondary);
+      line-height: 14px;
+    }
+
+    .cells-grid {
+      display: grid;
+      grid-template-rows: repeat(7, 14px);
+      grid-auto-flow: column;
+      grid-auto-columns: 14px;
+      gap: 3px;
+    }
+
+    .day-cell {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background-color: var(--level-0);
+      outline: 1px solid rgba(240, 246, 252, 0.05);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .day-cell.empty {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .day-cell:hover {
+      transform: scale(1.18);
+      outline: 1px solid var(--text-primary);
+      z-index: 2;
+    }
+
+    .day-cell.selected {
+      outline: 2px solid var(--accent);
+      transform: scale(1.15);
+      z-index: 3;
+    }
+
+    .level-0 { background-color: var(--level-0); }
+    .level-1 { background-color: var(--level-1); }
+    .level-2 { background-color: var(--level-2); }
+    .level-3 { background-color: var(--level-3); }
+    .level-4 { background-color: var(--level-4); }
+    .level-5 { background-color: var(--level-5); }
+    .level-6 { background-color: var(--level-6); }
+    .level-7 { background-color: var(--level-7); }
+    .level-8 { background-color: var(--level-8); }
+
+    .card-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .key-hints {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 2px 5px;
+      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
+      font-size: 10px;
+      line-height: 1;
+      color: var(--text-primary);
+      background-color: #21262d;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      box-shadow: inset 0 -1px 0 var(--border-color);
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-box {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      outline: 1px solid rgba(240, 246, 252, 0.05);
+    }
+
+    .details-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .details-date {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .details-total {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .user-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .user-row {
+      display: grid;
+      grid-template-columns: 160px 1fr 90px;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    .user-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .bar-track {
+      height: 8px;
+      background-color: #21262d;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background-color: var(--level-7);
+      border-radius: 4px;
+      transition: width 0.25s ease;
+    }
+
+    .user-count {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+    }
+
+    .empty-state {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <div class="title-group">
+          <h1 id="chat-title">Telegram Chat Activity</h1>
+          <span id="source-badge" class="badge"></span>
+        </div>
+        <div class="subtitle" id="chat-subtitle">
+          Load either a raw Telegram export (result.json) or a pre-processed heatmap_data.json
+        </div>
+      </div>
+      <div class="controls">
+        <select id="year-select" style="display: none;"></select>
+        <button id="export-btn" class="btn" style="display: none;" title="Download processed heatmap_data.json">
+          Export Heatmap JSON
+        </button>
+        <label class="file-label btn-primary">
+          Load JSON (Raw or Heatmap)
+          <input type="file" id="file-input" accept=".json" />
+        </label>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="heatmap-scroll">
+        <div class="heatmap-wrapper">
+          <div id="months-row" class="months-row"></div>
+          <div class="grid-body">
+            <div class="weekdays-col">
+              <span></span>
+              <span>Mon</span>
+              <span></span>
+              <span>Wed</span>
+              <span></span>
+              <span>Fri</span>
+              <span></span>
+            </div>
+            <div id="cells-grid" class="cells-grid"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <div class="key-hints">
+          <span>Navigate:</span>
+          <span><kbd>h</kbd> -1w</span>
+          <span><kbd>j</kbd> +1d</span>
+          <span><kbd>k</kbd> -1d</span>
+          <span><kbd>l</kbd> +1w</span>
+        </div>
+        <div class="legend" id="legend-container">
+          <span>Less</span>
+          <div class="legend-box level-0" title="0 messages"></div>
+          <div class="legend-box level-1"></div>
+          <div class="legend-box level-2"></div>
+          <div class="legend-box level-3"></div>
+          <div class="legend-box level-4"></div>
+          <div class="legend-box level-5"></div>
+          <div class="legend-box level-6"></div>
+          <div class="legend-box level-7"></div>
+          <div class="legend-box level-8"></div>
+          <span>More</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="details-card">
+      <p class="empty-state">
+        Click <strong>Load JSON</strong> to open either a raw Telegram export (<code>result.json</code>) or a processed <code>heatmap_data.json</code>. Once loaded, click any square or press <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> to inspect daily stats.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const ACTIVE_LEVELS = 8; // Levels 1..8
+    let chatData = null;
+    let availableYears = [];
+    let currentYear = null;
+    let selectedCell = null;
+    let selectedDateStr = null;
+    let cellByDate = new Map();
+
+    const fileInput = document.getElementById("file-input");
+    const exportBtn = document.getElementById("export-btn");
+    const yearSelect = document.getElementById("year-select");
+    const chatTitle = document.getElementById("chat-title");
+    const sourceBadge = document.getElementById("source-badge");
+    const chatSubtitle = document.getElementById("chat-subtitle");
+    const monthsRow = document.getElementById("months-row");
+    const cellsGrid = document.getElementById("cells-grid");
+    const detailsCard = document.getElementById("details-card");
+    const legendBoxes = document.querySelectorAll("#legend-container .legend-box");
+
+    // Auto-load heatmap_data.json or result.json if served via local HTTP server
+    autoLoadLocalJson();
+
+    async function autoLoadLocalJson() {
+      for (const candidate of ["heatmap_data.json", "result.json"]) {
+        try {
+          const res = await fetch(candidate);
+          if (res.ok) {
+            const rawJson = await res.json();
+            processIncomingJson(rawJson);
+            return;
+          }
+        } catch (_) {
+          // Ignore fetch errors when opened via file:// protocol
+        }
+      }
+    }
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      chatSubtitle.textContent = `Reading ${file.name}...`;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          processIncomingJson(parsed);
+        } catch (err) {
+          alert(`Failed to parse JSON: ${err.message}`);
+          chatSubtitle.textContent = "Error loading JSON file.";
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    exportBtn.addEventListener("click", () => {
+      if (!chatData) return;
+      const jsonString = JSON.stringify(chatData, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+
+      const safeName = (chatData.chat_name || "telegram_chat")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+        .replace(/^_|_$/g, "");
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName || "heatmap"}_heatmap_data.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    yearSelect.addEventListener("change", () => {
+      yearSelect.blur();
+      renderYear(parseInt(yearSelect.value, 10));
+    });
+
+    /**
+     * Detects whether the JSON is a raw Telegram export or our custom heatmap schema,
+     * converts it if necessary, and initializes the UI.
+     */
+    function processIncomingJson(json) {
+      if (!json || typeof json !== "object") {
+        throw new Error("JSON root must be an object.");
+      }
+
+      // Case 1: Custom pre-computed heatmap JSON
+      if (json.days && typeof json.days === "object" && !Array.isArray(json.messages)) {
+        setBadge("Heatmap JSON");
+        initializeApp(json);
+        return;
+      }
+
+      // Case 2: Raw Telegram Desktop export JSON (single chat)
+      if (Array.isArray(json.messages)) {
+        setBadge("Parsed from Raw Telegram Export");
+        const converted = analyzeTelegramExport(json);
+        initializeApp(converted);
+        return;
+      }
+
+      // Case 3: Full account export with chats.list
+      if (json.chats && Array.isArray(json.chats.list) && json.chats.list.length > 0) {
+        setBadge("Parsed from Raw Telegram Export");
+        const converted = analyzeTelegramExport(json.chats.list[0]);
+        initializeApp(converted);
+        return;
+      }
+
+      throw new Error("Unrecognized JSON structure. Expected Telegram 'result.json' or 'heatmap_data.json'.");
+    }
+
+    /**
+     * Port of analyze_telegram.py directly in browser JS.
+     */
+    function analyzeTelegramExport(rawExport) {
+      const chatName = rawExport.name || "Telegram Chat";
+      const messages = Array.isArray(rawExport.messages) ? rawExport.messages : [];
+
+      const dailyStats = Object.create(null);
+      const participantsSet = new Set();
+      let totalMessages = 0;
+
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (!msg || msg.type !== "message") continue;
+
+        const dateRaw = msg.date;
+        if (typeof dateRaw !== "string" || dateRaw.length < 10) continue;
+        const dateStr = dateRaw.slice(0, 10); // Extract 'YYYY-MM-DD'
+
+        const sender = msg.from || msg.actor || "Unknown";
+
+        let dayEntry = dailyStats[dateStr];
+        if (!dayEntry) {
+          dayEntry = { total: 0, users: Object.create(null) };
+          dailyStats[dateStr] = dayEntry;
+        }
+
+        dayEntry.total += 1;
+        dayEntry.users[sender] = (dayEntry.users[sender] || 0) + 1;
+        participantsSet.add(sender);
+        totalMessages += 1;
+      }
+
+      // Sort dates chronologically and sort each day's user counts descending
+      const sortedDates = Object.keys(dailyStats).sort();
+      const sortedDays = {};
+
+      for (const dateStr of sortedDates) {
+        const dayInfo = dailyStats[dateStr];
+        const sortedUsersEntries = Object.entries(dayInfo.users).sort((a, b) => b[1] - a[1]);
+        const sortedUsersObj = {};
+        for (const [user, count] of sortedUsersEntries) {
+          sortedUsersObj[user] = count;
+        }
+        sortedDays[dateStr] = {
+          total: dayInfo.total,
+          users: sortedUsersObj,
+        };
+      }
+
+      return {
+        chat_name: chatName,
+        participants: Array.from(participantsSet).sort(),
+        total_messages: totalMessages,
+        days: sortedDays,
+      };
+    }
+
+    function setBadge(text) {
+      sourceBadge.textContent = text;
+      sourceBadge.style.display = "inline-block";
+    }
+
+    // Vim-style hjkl keyboard navigation
+    window.addEventListener("keydown", (event) => {
+      if (!chatData) return;
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      const key = event.key.toLowerCase();
+      const deltas = {
+        h: -7, // Left one column (previous week)
+        l: 7,  // Right one column (next week)
+        k: -1, // Up one row (previous day)
+        j: 1,  // Down one row (next day)
+      };
+
+      if (!(key in deltas)) return;
+      event.preventDefault();
+
+      if (!selectedDateStr) {
+        const fallbackDate = `${currentYear}-01-01`;
+        const cell = cellByDate.get(fallbackDate);
+        if (cell) selectDay(cell, fallbackDate);
+        return;
+      }
+
+      const nextDateStr = addDaysUTC(selectedDateStr, deltas[key]);
+      const nextYear = parseInt(nextDateStr.slice(0, 4), 10);
+
+      if (nextYear === currentYear) {
+        const targetCell = cellByDate.get(nextDateStr);
+        if (targetCell) {
+          selectDay(targetCell, nextDateStr);
+        }
+      } else if (availableYears.includes(nextYear)) {
+        yearSelect.value = String(nextYear);
+        renderYear(nextYear, nextDateStr);
+      }
+    });
+
+    function initializeApp(data) {
+      chatData = data;
+      chatTitle.textContent = data.chat_name || "Telegram Chat Activity";
+
+      const dates = Object.keys(data.days || {}).sort();
+      const totalMsgs =
+        typeof data.total_messages === "number"
+          ? data.total_messages
+          : dates.reduce((sum, d) => sum + (data.days[d].total || 0), 0);
+
+      const participantCount = Array.isArray(data.participants) ? data.participants.length : 0;
+      const participantText = participantCount > 0 ? ` • ${participantCount} participants` : "";
+      chatSubtitle.textContent = `${totalMsgs.toLocaleString()} total messages across ${dates.length} active days${participantText}`;
+
+      availableYears = [...new Set(dates.map((d) => parseInt(d.slice(0, 4), 10)))].sort((a, b) => b - a);
+      if (availableYears.length === 0) {
+        availableYears.push(new Date().getFullYear());
+      }
+
+      yearSelect.innerHTML = "";
+      availableYears.forEach((yr) => {
+        const opt = document.createElement("option");
+        opt.value = yr;
+        opt.textContent = yr;
+        yearSelect.appendChild(opt);
+      });
+
+      yearSelect.style.display = "inline-block";
+      exportBtn.style.display = "inline-block";
+      renderYear(availableYears[0]);
+    }
+
+    function formatDateUTC(date) {
+      const y = date.getUTCFullYear();
+      const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(date.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function addDaysUTC(dateStr, deltaDays) {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + deltaDays);
+      return formatDateUTC(dt);
+    }
+
+    // Compute 7 cutoffs to divide active days into 8 tiers
+    function computeThresholds(year) {
+      const prefix = `${year}-`;
+      const totals = Object.entries(chatData.days || {})
+        .filter(([dateStr, info]) => dateStr.startsWith(prefix) && info.total > 0)
+        .map(([, info]) => info.total)
+        .sort((a, b) => a - b);
+
+      if (totals.length === 0) {
+        return [1, 3, 6, 12, 25, 50, 100];
+      }
+
+      const pickQuantile = (q) => totals[Math.floor((totals.length - 1) * q)];
+      const thresholds = [];
+      for (let i = 1; i < ACTIVE_LEVELS; i++) {
+        const raw = pickQuantile(i / ACTIVE_LEVELS);
+        const minAllowed = i === 1 ? 1 : thresholds[i - 2] + 1;
+        thresholds.push(Math.max(minAllowed, raw));
+      }
+      return thresholds;
+    }
+
+    function getLevel(count, thresholds) {
+      if (!count || count <= 0) return 0;
+      for (let i = 0; i < thresholds.length; i++) {
+        if (count <= thresholds[i]) {
+          return i + 1;
+        }
+      }
+      return ACTIVE_LEVELS;
+    }
+
+    function updateLegendTooltips(thresholds) {
+      legendBoxes[0].title = "Level 0: 0 messages";
+      for (let i = 1; i <= ACTIVE_LEVELS; i++) {
+        const box = legendBoxes[i];
+        if (!box) continue;
+        if (i === 1) {
+          box.title = `Level 1: 1 – ${thresholds[0]} messages`;
+        } else if (i === ACTIVE_LEVELS) {
+          box.title = `Level ${i}: ${thresholds[i - 2] + 1}+ messages`;
+        } else {
+          box.title = `Level ${i}: ${thresholds[i - 2] + 1} – ${thresholds[i - 1]} messages`;
+        }
+      }
+    }
+
+    function renderYear(year, preferredDateStr = null) {
+      currentYear = year;
+      monthsRow.innerHTML = "";
+      cellsGrid.innerHTML = "";
+      cellByDate.clear();
+      selectedCell = null;
+      selectedDateStr = null;
+
+      const thresholds = computeThresholds(year);
+      updateLegendTooltips(thresholds);
+
+      const startDate = new Date(Date.UTC(year, 0, 1));
+      const endDate = new Date(Date.UTC(year, 11, 31));
+      const startWeekday = startDate.getUTCDay(); // 0 = Sunday
+
+      for (let i = 0; i < startWeekday; i++) {
+        const empty = document.createElement("div");
+        empty.className = "day-cell empty";
+        cellsGrid.appendChild(empty);
+      }
+
+      let cellIndex = startWeekday;
+      let lastMonth = -1;
+      const monthPositions = new Map();
+      let latestActiveCell = null;
+      let latestActiveDate = null;
+
+      for (
+        let cur = new Date(startDate);
+        cur <= endDate;
+        cur.setUTCDate(cur.getUTCDate() + 1)
+      ) {
+        const dateStr = formatDateUTC(cur);
+        const month = cur.getUTCMonth();
+        const weekCol = Math.floor(cellIndex / 7);
+
+        if (month !== lastMonth) {
+          if (!monthPositions.has(weekCol)) {
+            monthPositions.set(weekCol, MONTH_NAMES[month]);
+          }
+          lastMonth = month;
+        }
+
+        const dayInfo = (chatData.days && chatData.days[dateStr]) || { total: 0, users: {} };
+        const level = getLevel(dayInfo.total, thresholds);
+
+        const cell = document.createElement("div");
+        cell.className = `day-cell level-${level}`;
+        cell.title = `${dateStr}: ${dayInfo.total} messages (Level ${level})`;
+        cell.dataset.date = dateStr;
+
+        cell.addEventListener("click", () => selectDay(cell, dateStr));
+        cellsGrid.appendChild(cell);
+        cellByDate.set(dateStr, cell);
+
+        if (dayInfo.total > 0) {
+          latestActiveCell = cell;
+          latestActiveDate = dateStr;
+        }
+
+        cellIndex++;
+      }
+
+      const totalWeeks = Math.ceil(cellIndex / 7);
+      for (let w = 0; w < totalWeeks; w++) {
+        const label = document.createElement("div");
+        label.className = "month-label";
+        label.textContent = monthPositions.get(w) || "";
+        monthsRow.appendChild(label);
+      }
+
+      if (preferredDateStr && cellByDate.has(preferredDateStr)) {
+        selectDay(cellByDate.get(preferredDateStr), preferredDateStr);
+      } else if (latestActiveCell && latestActiveDate) {
+        selectDay(latestActiveCell, latestActiveDate);
+      } else {
+        const firstDay = `${year}-01-01`;
+        if (cellByDate.has(firstDay)) {
+          selectDay(cellByDate.get(firstDay), firstDay);
+        }
+      }
+    }
+
+    function selectDay(cellElement, dateStr) {
+      if (selectedCell) {
+        selectedCell.classList.remove("selected");
+      }
+      selectedCell = cellElement;
+      selectedDateStr = dateStr;
+      selectedCell.classList.add("selected");
+
+      selectedCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+
+      const dayInfo = (chatData.days && chatData.days[dateStr]) || { total: 0, users: {} };
+      const usersEntries = Object.entries(dayInfo.users).sort((a, b) => b[1] - a[1]);
+
+      if (dayInfo.total === 0 || usersEntries.length === 0) {
+        detailsCard.innerHTML = `
+          <div class="details-header">
+            <span class="details-date">${dateStr}</span>
+            <span class="details-total">0 messages</span>
+          </div>
+          <p class="empty-state">No messages sent on this day.</p>
+        `;
+        return;
+      }
+
+      const rowsHtml = usersEntries
+        .map(([user, count]) => {
+          const pct = ((count / dayInfo.total) * 100).toFixed(1);
+          return `
+            <div class="user-row">
+              <div class="user-name" title="${escapeHtml(user)}">${escapeHtml(user)}</div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width: ${pct}%"></div>
+              </div>
+              <div class="user-count">${count.toLocaleString()} (${pct}%)</div>
+            </div>
+          `;
+        })
+        .join("");
+
+      detailsCard.innerHTML = `
+        <div class="details-header">
+          <span class="details-date">${dateStr}</span>
+          <span class="details-total">${dayInfo.total.toLocaleString()} total messages</span>
+        </div>
+        <div class="user-list">
+          ${rowsHtml}
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
